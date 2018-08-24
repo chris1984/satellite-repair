@@ -49,13 +49,14 @@ end.parse!
 
 # Have the user confirm before starting anything
 def confirm
-  puts '\n!!!!!!!!! WARNING: This utility should only be used as directed by Red Hat Support.
+  puts "\n!!!!!!!!! !!!!!!!!!
+  WARNING: This utility should only be used as directed by Red Hat Support.
   There is a risk for dataloss during these cleanup routines and should only be
-  used when directly instructed to do so !!!!!!!!!'.red
-  puts 'Are you sure you want to run this (Y/N)? '.red
+  used when directly instructed to do so ".red
+  puts "\nAre you sure you want to run this (Y/N)? ".red
   response = gets.chomp
   unless /[Y]/i.match(response)
-    puts '**** cancelled ****'.red
+    puts "\n**** cancelled ****".red
   end
 end
 
@@ -152,9 +153,30 @@ def pulp_cleanup
   `/bin/bash /root/pulp-cancel`
 end
 
-# Call repair methods based on options given
-if @options[:pulp]
+if options[:pulp]
   confirm
-  disk_space
-  pulp
+  stop_services
+  pulp_cleanup
+  start_services
+end
+
+if options[:tasks]
+  confirm
+  stop_services
+  dynflow_cleanup
+  start_services
+end
+
+if options[:qpid]
+  confirm
+  stop_services
+  qpid_repair
+  start_services
+end
+
+if options[:mongo]
+  confirm
+  stop_services
+  mongo_repair
+  start_services
 end
