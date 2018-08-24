@@ -1,4 +1,3 @@
-# rubocop:disable LineLength
 # Gem Definition
 require 'optparse'
 
@@ -82,7 +81,7 @@ def disk_space
   var_size = File.directory?(@VAR_DIR) ? `du -s  #{@VAR_DIR}`.split[0].to_i : 0
   pulp_size = File.directory?(@PULP_DIR) ? `du -s  #{@PULP_DIR}`.split[0].to_i : 0
   pulp_cache_size = File.directory?(@PULP_CACHE_DIR) ? `du -s  #{@PULP_CACHE_DIR}`.split[0].to_i : 0
-  if [mongo_size, pgsql_size, log_size, var_size, pulp_size, pulp_cache_size].all? { |total| total_space < total }
+  if [mongo_size, pgsql_size, log_size, var_size, pulp_size, pulp_cache_size].any? { |dir| total_space < dir }
     puts "There is not enough free space #{total_space}, please add additional space and try again, exiting.".red
     exit
   else
@@ -92,7 +91,7 @@ end
 
 # Mongo repair steps
 def mongo_repair
-  puts 'Starting repair on MongoDB, this may take a while depending on the size.'.yellow
+  puts 'Starting repair on MongoDB, this may take a while (upwords of 30 minutes.)'.yellow
   `sudo -u mongodb mongod --dbpath /var/lib/mongodb --repair`
   unless $?.success? # exit out if repair did not finish.
     puts 'MongoDB repair didnt finish successfully, exiting'.red
@@ -100,7 +99,7 @@ def mongo_repair
   end
   `chown -R mongodb:mongodb #{@MONGO_DIR}`
   `systemctl start mongodb`
-  puts 'MongoDB repair finished successfully, starting up Postgresql'.green
+  puts 'MongoDB repair finished successfully'.green
 end
 
 # QPID repair steps
@@ -132,6 +131,8 @@ end
 
 # Dynflow repair steps
 def dynflow_cleanup
+  puts 'Starting PostgreSQL'.yellow
+  `systemctl start postgresql`
   puts 'Starting to remove paused tasks related to Pulp and syncing.'.yellow
   `foreman-rake foreman_tasks:cleanup TASK_SEARCH='label = "Actions::Katello::Repository::Sync"' STATES=paused VERBOSE=true`
   `foreman-rake foreman_tasks:cleanup TASK_SEARCH='label = "Actions::Katello::System::GenerateApplicability"' STATES=paused VERBOSE=true`
@@ -144,17 +145,19 @@ end
 
 # Pulp cleanup steps
 def pulp_cleanup
-  puts 'Checking for pulp-admin and if not present then install'
+  puts 'Checking for pulp-admin and if not present then installing'
   pulp_version = `rpm -q pulp-server --queryformat "%{VERSION}"`
   `yum install pulp-admin-client-"#{pulp_version}" pulp-rpm-admin-extensions.noarch pulp-rpm-handlers.noarch`
   puts 'Grabbing the pulp-cleanup sript'
   `wget http://people.redhat.com/~chrobert/pulp-cancel -O /root/pulp-cancel`
   puts 'Running Pulp cleanup script'
   `/bin/bash /root/pulp-cancel`
+  puts 'Pulp cleanup: Complete'.green
 end
 
 if options[:pulp]
   confirm
+  disk_space
   stop_services
   pulp_cleanup
   start_services
@@ -162,6 +165,7 @@ end
 
 if options[:tasks]
   confirm
+  disk_space
   stop_services
   dynflow_cleanup
   start_services
@@ -169,6 +173,7 @@ end
 
 if options[:qpid]
   confirm
+  disk_space
   stop_services
   qpid_repair
   start_services
@@ -176,6 +181,7 @@ end
 
 if options[:mongo]
   confirm
+  disk_space
   stop_services
   mongo_repair
   start_services
