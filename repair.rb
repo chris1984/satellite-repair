@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 # Gem Definition
 require 'optparse'
 
@@ -44,6 +46,11 @@ OptionParser.new do |opts|
   opts.on('-m', '--mongo', 'Starts a repair of MongoDB - Takes a while depending on the size of your database.') do |mongo|
     options[:mongo] = mongo
   end
+
+  opts.on('-h', '--help', 'Displays Help') do
+		puts opts
+		exit
+  end
 end.parse!
 
 # Have the user confirm before starting anything
@@ -56,6 +63,7 @@ def confirm
   response = gets.chomp
   unless /[Y]/i.match(response)
     puts "\n**** cancelled ****".red
+    exit
   end
 end
 
@@ -63,29 +71,31 @@ end
 def stop_services
   puts 'Stopping Satellite services.'.yellow
   `katello-service stop`
+  puts
 end
 
 # start service method
 def start_services
   puts 'Starting Satellite services.'.yellow
   `katello-service start`
+  puts
 end
 
 # Check diskspace in Filesystem variables
 def disk_space
-  puts "Checking available diskspace in #{MONGO_DIR} #{PGSQL_DIR} #{LOG_DIR} #{VAR_DIR} #{PULP_DIR} #{PULP_CACHE_DIR} for free space.".green
+  puts "Checking available diskspace in \n#{MONGO_DIR} \n#{PGSQL_DIR} \n#{LOG_DIR} \n#{VAR_DIR} \n#{PULP_DIR} \n#{PULP_CACHE_DIR} for free space.".green
   total_space = `df -k --output=avail /var/tmp`.split("\n").last.to_i
-  mongo_size = File.directory?(@MONGO_DIR) ? `du -s  #{@MONGO_DIR}`.split[0].to_i : 0
-  pgsql_size = File.directory?(@PGSQL_DIR) ? `du -s  #{@PGSQL_DIR}`.split[0].to_i : 0
-  log_size = File.directory?(@LOG_DIR) ? `du -s  #{@LOG_DIR}`.split[0].to_i : 0
-  var_size = File.directory?(@VAR_DIR) ? `du -s  #{@VAR_DIR}`.split[0].to_i : 0
-  pulp_size = File.directory?(@PULP_DIR) ? `du -s  #{@PULP_DIR}`.split[0].to_i : 0
-  pulp_cache_size = File.directory?(@PULP_CACHE_DIR) ? `du -s  #{@PULP_CACHE_DIR}`.split[0].to_i : 0
+  mongo_size = `du -s  #{@MONGO_DIR}`.split[0].to_i
+  pgsql_size = `du -s  #{@PGSQL_DIR}`.split[0].to_i
+  log_size = `du -s  #{@LOG_DIR}`.split[0].to_i
+  var_size = `du -s  #{@VAR_DIR}`.split[0].to_i
+  pulp_size = `du -s  #{@PULP_DIR}`.split[0].to_i
+  pulp_cache_size = `du -s  #{@PULP_CACHE_DIR}`.split[0].to_i
   if [mongo_size, pgsql_size, log_size, var_size, pulp_size, pulp_cache_size].any? { |dir| total_space < dir }
     puts "There is not enough free space #{total_space}, please add additional space and try again, exiting.".red
     exit
   else
-    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirments, continuing with repair".yellow
+    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirments, continuing with repair\n".yellow
   end
 end
 
@@ -93,19 +103,15 @@ end
 def mongo_repair
   puts 'Starting repair on MongoDB, this may take a while (upwords of 30 minutes.)'.yellow
   `sudo -u mongodb mongod --dbpath /var/lib/mongodb --repair`
-  unless $?.success? # exit out if repair did not finish.
-    puts 'MongoDB repair didnt finish successfully, exiting'.red
-    exit
-  end
-  `chown -R mongodb:mongodb #{@MONGO_DIR}`
-  `systemctl start mongodb`
-  puts 'MongoDB repair finished successfully'.green
+  `chown -R mongodb:mongodb /var/lib/mongodb`
+  `systemctl start mongod`
+  puts 'MongoDB repair finished successfully\n'.green
 end
 
 # QPID repair steps
 def qpid_repair
-  cert = 'etc/pki/katello/certs/katello-apache.crt'
-  key = '/etc/pki/katello/private/katello-apache.key'
+  cert = '/etc/pki/katello/certs/java-client.crt'
+  key = '/etc/pki/katello/private/java-client.key'
   puts 'Starting to repair QPID and HornetQ journals'.yellow
   `rm -rf /var/lib/qpidd/.qpidd /var/lib/qpidd/*`
   `rm -rf /var/lib/candlepin/hornetq/*`
@@ -113,20 +119,25 @@ def qpid_repair
   puts 'Sleeping for 60 seconds for qpid to start fully'.yellow
   sleep 60
   # delete exchange
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" del exchange event --durable`
+  puts 'Deleting Exchange'.yellow
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" del exchange event --durable`
   # create exchange
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" add exchange topic event --durable`
+  puts 'Creating Exchange'.yellow
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" add exchange topic event --durable`
   # delete queue
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b 'amqps://localhost:5671' del queue katello_event_queue --force`
+  puts 'Deleting Event Queue'.yellow
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b 'amqps://localhost:5671' del queue katello_event_queue --force`
   # create queue
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b 'amqps://localhost:5671' add queue katello_event_queue --durable`
+  puts 'Creating Event Queue'.yellow
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b 'amqps://localhost:5671' add queue katello_event_queue --durable`
   # bind queue to exchange with filtering
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" bind event katello_event_queue entitlement.deleted`
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" bind event katello_event_queue entitlement.created`
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" bind event katello_event_queue pool.created`
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" bind event katello_event_queue pool.deleted`
-  `qpid-config --ssl-certificate #{cert} --ssl-key #{key} -b "amqps://localhost:5671" bind event katello_event_queue compliance.created`
-  puts 'HornetQ/QPID journal reset: Complete'.green
+  puts 'Binding Event Queue to Exchange with filtering'.yellow
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue entitlement.deleted`
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue entitlement.created`
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.created`
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.deleted`
+  `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue compliance.created`
+  puts 'HornetQ/QPID journal reset: Complete\n'.green
 end
 
 # Dynflow repair steps
@@ -140,7 +151,7 @@ def dynflow_cleanup
   puts 'Starting to truncate foreman_tasks_tasks table'.yellow
   tasks = 'TRUNCATE TABLE dynflow_envelopes,dynflow_delayed_plans,dynflow_steps,dynflow_actions,dynflow_execution_plans,foreman_tasks_locks,foreman_tasks_tasks;'
   `sudo -i -u postgres psql -d foreman -c "#{tasks}"`
-  puts 'Foreman Task and Dynflow table truncate: Complete'.green
+  puts 'Foreman Task and Dynflow table truncate: Complete\n'.green
 end
 
 # Pulp cleanup steps
@@ -152,7 +163,7 @@ def pulp_cleanup
   `wget http://people.redhat.com/~chrobert/pulp-cancel -O /root/pulp-cancel`
   puts 'Running Pulp cleanup script'
   `/bin/bash /root/pulp-cancel`
-  puts 'Pulp cleanup: Complete'.green
+  puts 'Pulp cleanup: Complete\n'.green
 end
 
 if options[:pulp]
