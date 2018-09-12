@@ -83,6 +83,7 @@ end
 
 # Check diskspace in Filesystem variables
 def disk_space
+  puts
   puts "Checking available diskspace in \n#{MONGO_DIR} \n#{PGSQL_DIR} \n#{LOG_DIR} \n#{VAR_DIR} \n#{PULP_DIR} \n#{PULP_CACHE_DIR} for free space.".green
   total_space = `df -k --output=avail /var/tmp`.split("\n").last.to_i
   mongo_size = `du -s  #{@MONGO_DIR}`.split[0].to_i
@@ -137,7 +138,7 @@ def qpid_repair
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.created`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.deleted`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue compliance.created`
-  puts 'HornetQ/QPID journal reset: Complete\n'.green
+  puts "HornetQ/QPID journal reset: Complete\n".green
 end
 
 # Dynflow repair steps
@@ -151,19 +152,26 @@ def dynflow_cleanup
   puts 'Starting to truncate foreman_tasks_tasks table'.yellow
   tasks = 'TRUNCATE TABLE dynflow_envelopes,dynflow_delayed_plans,dynflow_steps,dynflow_actions,dynflow_execution_plans,foreman_tasks_locks,foreman_tasks_tasks;'
   `sudo -i -u postgres psql -d foreman -c "#{tasks}"`
-  puts 'Foreman Task and Dynflow table truncate: Complete\n'.green
+  puts "Foreman Task and Dynflow table truncate: Complete\n".green
 end
 
 # Pulp cleanup steps
 def pulp_cleanup
-  puts 'Checking for pulp-admin and if not present then installing'
-  pulp_version = `rpm -q pulp-server --queryformat "%{VERSION}"`
-  `yum install pulp-admin-client-"#{pulp_version}" pulp-rpm-admin-extensions.noarch pulp-rpm-handlers.noarch`
-  puts 'Grabbing the pulp-cleanup sript'
-  `wget http://people.redhat.com/~chrobert/pulp-cancel -O /root/pulp-cancel`
-  puts 'Running Pulp cleanup script'
-  `/bin/bash /root/pulp-cancel`
-  puts 'Pulp cleanup: Complete\n'.green
+  puts 'Checking for pulp-admin.'.yellow
+  `rpm -qa | grep pulp-admin`
+  if $?.success?
+    puts 'Grabbing the pulp-cleanup sript'
+    `wget http://people.redhat.com/~chrobert/pulp-cancel -O /root/pulp-cancel`
+    puts 'Running Pulp cleanup script'.yellow
+    `chmod +x /root/pulp-cancel`
+    `/bin/bash /root/pulp-cancel`
+    puts "Pulp cleanup: Complete\n".green
+  else
+    puts "pulp-admin is not installed, please visit https://access.redhat.com/solutions/1295653 to install/configure pulp-admin.\n".red
+    puts "Starting Services.\n".yellow
+    `katello-service start`
+    exit
+  end
 end
 
 if options[:pulp]
