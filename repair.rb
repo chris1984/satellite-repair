@@ -74,7 +74,7 @@ def stop_services
   puts
 end
 
-# start service method
+# Start service method
 def start_services
   puts 'Starting Satellite services.'.yellow
   `katello-service start`
@@ -96,63 +96,63 @@ def disk_space
     puts "There is not enough free space #{total_space}, please add additional space and try again, exiting.".red
     exit
   else
-    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirments, continuing with repair\n".yellow
+    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirments, continuing with repair.\n".yellow
   end
 end
 
 # Mongo repair steps
 def mongo_repair
-  puts 'Starting repair on MongoDB, this may take a while (upwords of 30 minutes.)'.yellow
+  puts 'Starting repair on MongoDB, this may take a while (upwords of 30 minutes.).'.yellow
   `sudo -u mongodb mongod --dbpath /var/lib/mongodb --repair`
   `chown -R mongodb:mongodb /var/lib/mongodb`
   `systemctl start mongod`
-  puts 'MongoDB repair finished successfully\n'.green
+  puts "MongoDB repair finished successfully.\n".green
 end
 
 # QPID repair steps
 def qpid_repair
   cert = '/etc/pki/katello/certs/java-client.crt'
   key = '/etc/pki/katello/private/java-client.key'
-  puts 'Starting to repair QPID and HornetQ journals'.yellow
+  puts 'Starting to repair QPID and HornetQ journals.'.yellow
   `rm -rf /var/lib/qpidd/.qpidd /var/lib/qpidd/*`
   `rm -rf /var/lib/candlepin/hornetq/*`
   `systemctl start qpidd.service`
-  puts 'Sleeping for 60 seconds for qpid to start fully'.yellow
+  puts 'Sleeping for 60 seconds, for QPID to start fully.'.yellow
   sleep 60
-  # delete exchange
-  puts 'Deleting Exchange'.yellow
+  # Delete exchange
+  puts 'Deleting Exchange.'.yellow
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" del exchange event --durable`
-  # create exchange
-  puts 'Creating Exchange'.yellow
+  # Create exchange
+  puts 'Creating Exchange.'.yellow
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" add exchange topic event --durable`
-  # delete queue
-  puts 'Deleting Event Queue'.yellow
+  # Delete queue
+  puts 'Deleting Event Queue.'.yellow
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b 'amqps://localhost:5671' del queue katello_event_queue --force`
-  # create queue
-  puts 'Creating Event Queue'.yellow
+  # Create queue
+  puts 'Creating Event Queue.'.yellow
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b 'amqps://localhost:5671' add queue katello_event_queue --durable`
-  # bind queue to exchange with filtering
-  puts 'Binding Event Queue to Exchange with filtering'.yellow
+  # Bind queue to exchange with filtering
+  puts 'Binding Event Queue to Exchange with filtering.'.yellow
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue entitlement.deleted`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue entitlement.created`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.created`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue pool.deleted`
   `qpid-config --ssl-certificate "#{cert}" --ssl-key "#{key}" -b "amqps://localhost:5671" bind event katello_event_queue compliance.created`
-  puts "HornetQ/QPID journal reset: Complete\n".green
+  puts "HornetQ/QPID journal reset: Complete.\n".green
 end
 
 # Dynflow repair steps
 def dynflow_cleanup
-  puts 'Starting PostgreSQL'.yellow
+  puts 'Starting PostgreSQL.'.yellow
   `systemctl start postgresql`
   puts 'Starting to remove paused tasks related to Pulp and syncing.'.yellow
   `foreman-rake foreman_tasks:cleanup TASK_SEARCH='label = "Actions::Katello::Repository::Sync"' STATES=paused VERBOSE=true`
   `foreman-rake foreman_tasks:cleanup TASK_SEARCH='label = "Actions::Katello::System::GenerateApplicability"' STATES=paused VERBOSE=true`
   puts 'Finished removing paused tasks.'.green
-  puts 'Starting to truncate foreman_tasks_tasks table'.yellow
+  puts 'Starting to truncate foreman_tasks_tasks table.'.yellow
   tasks = 'TRUNCATE TABLE dynflow_envelopes,dynflow_delayed_plans,dynflow_steps,dynflow_actions,dynflow_execution_plans,foreman_tasks_locks,foreman_tasks_tasks;'
   `sudo -i -u postgres psql -d foreman -c "#{tasks}"`
-  puts "Foreman Task and Dynflow table truncate: Complete\n".green
+  puts "Foreman Task and Dynflow table truncate: Complete.\n".green
 end
 
 # Pulp cleanup steps
@@ -160,12 +160,12 @@ def pulp_cleanup
   puts 'Checking for pulp-admin.'.yellow
   `rpm -qa | grep pulp-admin`
   if $?.success?
-    puts 'Grabbing the pulp-cleanup sript'
+    puts 'Grabbing the Pulp cleanup sript.'.yellow
     `wget http://people.redhat.com/~chrobert/pulp-cancel -O /root/pulp-cancel`
     puts 'Running Pulp cleanup script'.yellow
     `chmod +x /root/pulp-cancel`
     `/bin/bash /root/pulp-cancel`
-    puts "Pulp cleanup: Complete\n".green
+    puts "Pulp cleanup: Complete.\n".green
   else
     puts "pulp-admin is not installed, please visit https://access.redhat.com/solutions/1295653 to install/configure pulp-admin.\n".red
     puts "Starting Services.\n".yellow
