@@ -96,7 +96,7 @@ def disk_space
     puts "There is not enough free space #{total_space}, please add additional space and try again, exiting.".red
     exit
   else
-    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirments, continuing with repair.\n".yellow
+    puts "There is #{total_space} free space on disk, which is more than the size of the required directory requirements, continuing with repair.\n".yellow
   end
 end
 
